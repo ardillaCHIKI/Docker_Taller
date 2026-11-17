@@ -1,0 +1,79 @@
+# Taller mecánico · Compose
+#
+# Toda la configuración sale del archivo .env (genéralo con configurar.py).
+# Cambiar entre local y AWS = cambiar el .env y el perfil. El código no se toca.
+#
+#   LOCAL (con PostgreSQL de desarrollo en un contenedor):
+#     python3 configurar.py local
+#     docker compose --profile local build
+#     docker compose --profile local run --rm app python inicializar.py
+#     docker compose --profile local up -d
+#     docker compose --profile local run --rm app python comprobar.py
+#
+#   AWS (en la EC2; la base es RDS privado, solo se levanta la app):
+#     python3 configurar.py aws
+#     docker compose build
+#     docker compose run --rm app python inicializar.py
+#     docker compose up -d
+#     docker compose run --rm app python comprobar.py
+#
+# Requiere Docker Compose v2.20 o superior (por "required: false").
+
+name: taller
+
+services:
+  app:
+    build: .
+    image: taller-app:1.0
+    restart: unless-stopped
+    # Único puerto publicado: la web. PostgreSQL no se publica nunca.
+    ports:
+      - "${APP_PORT:-8501}:8501"
+    # Solo las variables que necesita la app (la credencial de administrador NO llega aquí)
+    environment:
+      DB_HOST: ${DB_HOST:?Falta DB_HOST en .env (ejecuta python3 configurar.py)}
+      DB_PORT: ${DB_PORT:-5432}
+      DB_NAME: ${DB_NAME:?Falta DB_NAME en .env}
+      DB_USER: ${DB_USER:?Falta DB_USER en .env}
+      DB_PASSWORD: ${DB_PASSWORD:?Falta DB_PASSWORD en .env}
+      DB_SSLMODE: ${DB_SSLMODE:-verify-full}
+      DB_SSLROOTCERT: ${DB_SSLROOTCERT:-}
+    # Certificado de la CA de RDS (público, pero fuera de la imagen)
+    volumes:
+      - ./certs:/app/certs:ro
+    # En local espera a que PostgreSQL esté listo; en AWS el servicio db no existe y se ignora
+    depends_on:
+      db:
+        condition: service_healthy
+        required: false
+    # Recursos: Streamlit + psycopg caben de sobra en 512 MB (EC2 t3.micro/t3.small)
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Base de datos de DESARROLLO. Solo con --profile local. En AWS se usa RDS.
+  db:
+    image: postgres:16-alpine
+    profiles: ["local"]
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-taller}
+      POSTGRES_USER: ${DB_ADMIN_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_ADMIN_PASSWORD:-}
+    volumes:
+      - datos_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+volumes:
+  datos_pg:
