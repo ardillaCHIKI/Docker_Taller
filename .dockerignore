@@ -1,0 +1,30 @@
+# Secretos y configuración del entorno: NUNCA dentro de la imagen
+.env
+.env.*
+*.env
+certs/
+*.pem
+*.key
+
+# Control de versiones y herramientas
+.git
+.gitignore
+.vscode/
+.idea/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# No hacen falta dentro de la imagen
+configurar.py
+compose.yaml
+Dockerfile
+.dockerignore
+*.md
+docs/
+capturas/
+informe/
